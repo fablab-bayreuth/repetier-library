@@ -72,19 +72,6 @@ static int serialOpen(const char *device, int rate)
 
 Printer::Printer(const char *file,
 				 int baudRate,
-				 int protocol)
-	: fd(serialOpen(file, baudRate)),
-	  protocol(protocol),
-	  baudRate(baudRate),
-	  x(NAN),
-	  y(NAN),
-	  z(NAN)
-{
-	setHome(0, 0, 0, 0);
-}
-
-Printer::Printer(const char *file,
-				 int baudRate,
 				 int protocol,
 				 float home_x,
 				 float home_y,

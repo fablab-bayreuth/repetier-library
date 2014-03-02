@@ -38,6 +38,7 @@ static int wait(FILE *f, int type, int lineNumber) {
         	}
 	    }
 	}
+	return 0;
 }
 
 static int rate_to_constant(int baudrate) {
@@ -107,13 +108,15 @@ Printer::Printer(const char *file,
 				 float home_y,
 				 float home_z,
 				 float home_e)
-	: fd(serialOpen(file, baudRate)),
+	: lineNumber(0),
+	  fd(serialOpen(file, baudRate)),
 	  file(fdopen(fd, "rw")),
 	  protocol(protocol),
 	  x(NAN),
 	  y(NAN),
 	  z(NAN),
-	  lineNumber(0)
+	  e(NAN),
+	  f(NAN)
 {
 	wait(this->file, START, 0);
 	setHome(home_x, home_y, home_z, home_e);

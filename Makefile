@@ -8,7 +8,7 @@ OBJ:=$(SRC:%.cpp=%.o)
 
 all: bin/librepetier.so bin/librepetier.a
 
-doc: Doxyfile $(SRC) $(INC)
+doc:
 	doxygen
 
 bin/librepetier.so: $(OBJ)
@@ -22,4 +22,4 @@ clean:
 	rm -f $(OBJ)
 	rm -rf doc/html doc/latex
 
-.PHONY: clean
+.PHONY: clean doc

@@ -1,7 +1,9 @@
 #include <err.h>
 #include <fcntl.h>
 #include <linux/serial.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <termio.h>
@@ -9,6 +11,34 @@
 
 #include "Printer.h"
 
+#define START 1
+#define WAIT 2
+#define OK 4
+#define RESEND 8
+
+#define START_CHR "start\r\n"
+#define WAIT_CHR "wait\r\n"
+#define OK_CHR "ok "
+#define RESEND_CHR "Resend:"
+
+static int wait(FILE *f, int type, int lineNumber) {
+	char buf[128];
+	for(int i = 0; i < 10; i++) {
+		fgets(buf, 127, f);
+		printf("%s", buf);
+#define CHECK(SYM) if(type & SYM && !strncmp(buf, SYM ## _CHR, strlen(SYM ## _CHR))) return SYM;
+		CHECK(START);
+		CHECK(WAIT);
+		CHECK(RESEND);
+#undef CHECK
+		
+		if(type & OK) {
+		    if(!strncmp(buf, OK_CHR, strlen(OK_CHR)) && atoi(buf + strlen(OK_CHR)) == lineNumber) {
+		        return OK;
+        	}
+	    }
+	}
+}
 
 static int rate_to_constant(int baudrate) {
 #define B(x) case x: return B##x
@@ -31,7 +61,7 @@ static int serialOpen(const char *device, int rate)
 	int speed = 0;
 
 	/* Open and configure serial port */
-	if ((fd = open(device,O_RDWR|O_NOCTTY)) == -1)
+	if ((fd = open(device,O_RDWR|O_NOCTTY|O_NONBLOCK)) == -1)
 		return -1;
 
 	speed = rate_to_constant(rate);
@@ -50,7 +80,7 @@ static int serialOpen(const char *device, int rate)
 			return -1;
 		if (ioctl(fd, TIOCGSERIAL, &serinfo) < 0)
 			return -1;
-		if (serinfo.custom_divisor * rate != serinfo.baud_base) {
+		if (1 || serinfo.custom_divisor * rate != serinfo.baud_base) {
 			warnx("actual baudrate is %d / %d = %f",
 			      serinfo.baud_base, serinfo.custom_divisor,
 			      (float)serinfo.baud_base / serinfo.custom_divisor);
@@ -78,43 +108,53 @@ Printer::Printer(const char *file,
 				 float home_z,
 				 float home_e)
 	: fd(serialOpen(file, baudRate)),
+	  file(fdopen(fd, "rw")),
 	  protocol(protocol),
 	  x(NAN),
 	  y(NAN),
-	  z(NAN)
+	  z(NAN),
+	  lineNumber(0)
 {
+	wait(this->file, START, 0);
 	setHome(home_x, home_y, home_z, home_e);
+	
+	// Reset line number
+	sendBinaryCode(M, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+}
+
+Printer::~Printer() {
+	close(fd);
 }
 
 void
 Printer::home() {
-	sendBinaryCode(G, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0);
+	sendBinaryCode(G, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 void
 Printer::move(float x, float y, float z, float e, float f) {
 	uint16_t flag = G;
-	if(x != NAN) {
+	if(!isnan(x)) {
 		flag |= X;
 		this->x = x;
 	}
-	if(y != NAN) {
+	if(!isnan(y)) {
 		flag |= Y;
 		this->y = y;
 	}
-	if(z != NAN) {
+	if(!isnan(z)) {
 		flag |= Z;
 		this->z = z;
 	}
-	if(e != NAN) {
+	if(!isnan(e)) {
 		flag |= E;
 		this->e = e;
 	}
-	if(f != NAN) {
+	if(!isnan(f)) {
 		flag |= F;
 		this->f = f;
 	}
-	sendBinaryCode(flag, 0, 0, 1, x, y, z, e, f, 0, 0, 0);
+	sendBinaryCode(flag, 0, 1, x, y, z, e, f, 0, 0, 0);
 }
 
 void
@@ -124,7 +164,6 @@ Printer::moveRelative(float x, float y, float z, float e, float f) {
 
 void
 Printer::sendBinaryCode(uint16_t flag,
-						int16_t n,
 						uint8_t m,
 						uint8_t g,
 						float x, float y, float z,
@@ -136,13 +175,20 @@ Printer::sendBinaryCode(uint16_t flag,
 	uint8_t buf[29];
 	int len = 0;
 
+	// Disable v2 stuff
 	flag &= ~ (V2 | EXT | INT | TXT);
-	flag |= NOTASCII;
+
+	// Always send it as binary and with a linenumber
+	flag |= NOTASCII | N;
+
+	if(m == 110 && flag&M) {
+		lineNumber = 0;
+	}
 
 	memcpy(buf + len, &flag, 2); len += 2;
 
-#define check(X, x, l) if(flag & X) { memcpy(buf + len, &x, l); len += l; }
-	check(N, n, 2);
+#define check(XX, xx, ll) if(flag & XX) { memcpy(buf + len, &xx, ll); len += ll; }
+	check(N, lineNumber, 2);
 	check(M, m, 1);
 	check(G, g, 1);
 	check(X, x, 4);
@@ -155,17 +201,26 @@ Printer::sendBinaryCode(uint16_t flag,
 	check(P, p, 4);
 #undef check
 
-	uint8_t fl1 = 0,
+	uint16_t fl1 = 0,
 		fl2 = 0;
 	for(int i = 0; i < len; i++) {
-		fl1 += buf[i];
-		fl2 += fl1;
+		fl1 = (fl1 + buf[i]) % 255;
+		fl2 = (fl2 + fl1) % 255;
 	}
-	buf[len++] = fl2;
-	buf[len++] = fl1;
+	buf[len++] = fl1 & 0xFF;
+	buf[len++] = fl2 & 0xFF;
 
-	write(fd, buf, len);
+	do {
+		// Use a loop, or it won't work.
+		// Some timing issue?
+		for(int i = 0; i < len; i++) {
+			write(fd, buf + i, 1);
+		}
+	} while (wait(file, RESEND|OK, lineNumber) == RESEND);
+
+	lineNumber++;
 }
+
 
 void
 Printer::setHome(float x, float y, float z, float home_e) {

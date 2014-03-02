@@ -1,4 +1,5 @@
 #pragma once
+#include <stdio.h>
 #include <stdint.h>
 #include <math.h>
 
@@ -80,8 +81,9 @@ public:
 	void setHome(float x, float y, float z, float e);
 	
 private:
-	
+	uint16_t lineNumber;
 	int fd;
+	FILE *file;
 	int protocol;
 	int baudRate;
 	float x, y, z, e, f;
@@ -107,7 +109,6 @@ private:
 	};
 
 	void sendBinaryCode(uint16_t flag,
-						int16_t n,
 						uint8_t m,
 						uint8_t g,
 						float x, float y, float z,

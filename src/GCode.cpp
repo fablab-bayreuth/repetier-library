@@ -2,8 +2,8 @@
 #include <cstring>
 
 GCode::GCode(int32_t lineNumber)
-	: flag(0),
-	  bufferValid(false)
+	: bufferValid(false),
+	  flag(0)
 {
 	if(lineNumber > 0) {
 		setN(lineNumber);
@@ -146,7 +146,8 @@ GCode::getBufferLength() {
 void
 GCode::updateBuffer() {
 	if(!bufferValid) {
-		*(uint16_t*)(buffer) = flag | FLAG_NOTASCII;
+		uint16_t flagWithNotAscii = flag | FLAG_NOTASCII;
+		memcpy(buffer, &flagWithNotAscii, 2);
 		length = 2;
 #define check(X, x, l) if(flag & X) { memcpy(buffer + length, &x, l); length += l; }
 		check(FLAG_N, n, 2);

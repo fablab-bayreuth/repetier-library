@@ -197,7 +197,6 @@ Printer::serialStartsWith(const char *x) {
 void
 Printer::serialParse() {
 	if(serialStartsWith(START)) {
-		printf("--- Started!\n");
 		started = true;
 		signalNextCommand.notify_all();
 	} else if(started) {
@@ -273,7 +272,6 @@ Printer::serialWrite() {
 		if(started
 		   && lineNumber == confirmedLineNumber
 		   && commandQueue.size() > 0) {
-			printf("%d/%d (%d)\n", lineNumber, confirmedLineNumber, commandQueue.size());
 			GCode gc = commandQueue.front();
 			uint8_t len;
 			

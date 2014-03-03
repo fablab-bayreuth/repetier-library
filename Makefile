@@ -1,6 +1,6 @@
 CXXFLAGS += -Wall -pedantic -std=c++11 -fpic -Iinclude -Os
 
-SRC:=Printer.cpp
+SRC:=Printer.cpp GCode.cpp
 
 INC:=$(SRC:%.cpp=include/%.h)
 SRC:=$(SRC:%=src/%)

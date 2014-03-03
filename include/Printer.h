@@ -2,6 +2,12 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
+
+#include "GCode.h"
 
 /**
  * \brief A class that allows communication with a printer using the repetier firmware.
@@ -80,42 +86,42 @@ public:
 	 */
 	void setHome(float x, float y, float z, float e);
 	
+	/**
+	 * \brief Waits until the command buffer is empty.
+	 */
+	void wait();
+	
 private:
-	uint16_t lineNumber;
 	int fd;
 	FILE *file;
+
+	char serialReadBuffer[128];
+	int serialReadNum;
+
+	bool running;
+	bool started;
+	
 	int protocol;
 	int baudRate;
 	float x, y, z, e, f;
 	float home_x, home_y, home_z, home_e;
 
-	enum GCodeFlags {
-		N				= 1<< 0,
-		M				= 1<< 1,
-		G				= 1<< 2,
-		X				= 1<< 3,
-		Y				= 1<< 4,
-		Z				= 1<< 5,
-		E				= 1<< 6,
-		NOTASCII		= 1<< 7,
-		F				= 1<< 8,
-		T				= 1<< 9,
-		S				= 1<<10,
-		P				= 1<<11,
-		V2				= 1<<12,
-		EXT				= 1<<13,
-		INT				= 1<<14,
-		TXT				= 1<<15
-	};
+	std::thread serialReadThread;
+	std::thread serialWriteThread;
+	std::mutex writeMutex;
+	std::condition_variable signalNextCommand;
+	std::condition_variable signalFinishedCommand;
 
-	void sendBinaryCode(uint16_t flag,
-						uint8_t m,
-						uint8_t g,
-						float x, float y, float z,
-						float e,
-						float f,
-						int8_t t,
-						int32_t s,
-						int32_t p);
-						
+	std::deque<GCode> commandQueue;
+
+	int lineNumber,
+		confirmedLineNumber;
+	
+	bool serialStartsWith(const char *x);
+	void serialParse();
+	void serialRead();
+
+	void serialWrite();
+
+	void addCommand(GCode &gc, bool front = false);
 };

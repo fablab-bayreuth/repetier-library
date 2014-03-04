@@ -12,9 +12,9 @@ doc:
 	doxygen
 
 bin/librepetier.so: $(OBJ)
-	$(CXX) $(CXXFLAGS) -shared -o $@ $<
+	$(CXX) $(CXXFLAGS) -shared -o $@ $^
 bin/librepetier.a: $(OBJ)
-	ar rcs $@ $<
+	ar rcs $@ $^
 
 $(OBJ): src/%.o: $(INC)
 
